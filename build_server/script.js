@@ -12,7 +12,6 @@ const s3Client = new S3Client({
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ,
     }
 });
-const publisher = new Redis(process.env.REDIS_SERVER);
 AWS.config.update({
   region: process.env.AWS_REGION,
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -42,6 +41,7 @@ async function init(){
     const p = exec(`cd ${outDirPath} && npm install && npm run build`);
     p.stdout.on('data',function(data){
         console.log(data.toString());
+        console.log(p.stdout.on);
     });
     p.stdout.on('Error',async function(data){
         console.log("Error:",data.toString());
@@ -68,6 +68,7 @@ async function init(){
             await publisLog(`uploaded ${file}`);
             console.log('uploading ends', filePath)
         }
+        console.log("Done..................");
         await publisLog("Done...");
         process.exit(0);
     });

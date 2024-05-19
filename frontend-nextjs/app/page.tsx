@@ -7,7 +7,7 @@ import { Github } from "lucide-react";
 import { Fira_Code } from "next/font/google";
 import axios from "axios";
 
-const socket = io("http://localhost:9002");
+const socket = io("http://localhost:9001");
 
 const firaCode = Fira_Code({ subsets: ["latin"] });
 
@@ -35,19 +35,26 @@ export default function Home() {
 
   const handleClickDeploy = useCallback(async () => {
     setLoading(true);
-
-    const { data } = await axios.post(`http://localhost:9000/project`, {
-      gitURL: repoURL,
-      slug: projectId,
+    let data:any = '';
+    const resData = await axios.post(`http://localhost:9000/project`,{
+      name: 'abc'+projectId,
+      gitUrl: repoURL,
     });
-
+    data = resData.data;
+    const { gitUrl, id } = data.data.project  ;
+    let resData2:any = '';
     if (data && data.data) {
-      const { projectSlug, url } = data.data;
-      setProjectId(projectSlug);
+      setProjectId(id);
+      resData2 = await axios.post(`http://localhost:9000/deploy`,{
+        projectId:id
+      });
+    }
+    data = resData2.data;
+    if (data && data.data) {
+      const {projectId , url} = data;
       setDeployPreviewURL(url);
-
-      console.log(`Subscribing to logs:${projectSlug}`);
-      socket.emit("subscribe", `logs:${projectSlug}`);
+      console.log(`Subscribing to logs:${projectId}`);
+      socket.emit("subscribe", `logs:${projectId}`);
     }
   }, [projectId, repoURL]);
 
