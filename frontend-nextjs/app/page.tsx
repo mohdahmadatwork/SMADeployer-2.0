@@ -50,9 +50,13 @@ export default function Home() {
       });
     }
     data = resData2.data;
+    console.log("resData2",resData2);
+    console.log("data",data);
     if (data && data.data) {
-      const {projectId , url,deploymentId} = data;
+      const {deploymentId} = data;
+      const {projectId , url} = data.data;
       setDeployPreviewURL(url);
+      console.log("url",url);
       console.log(`Subscribing to logs:${deploymentId}`);
       socket.emit("subscribe", `logs:${deploymentId}`);
     }
@@ -60,8 +64,8 @@ export default function Home() {
 
   const handleSocketIncommingMessage = useCallback((message: string) => {
     console.log(`[Incomming Socket Message]:`, typeof message, message);
-    const { log } = JSON.parse(message);
-    setLogs((prev) => [...prev, log]);
+    // const { log } = JSON.parse(message);
+    setLogs((prev) => [...prev, message]);
     logContainerRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 

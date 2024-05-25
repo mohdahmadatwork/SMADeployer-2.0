@@ -1,7 +1,8 @@
 const express = require('express');
-const http = require('http');
 const app = express();
 const port = 9000;
+const socketPort = 9001;
+const proxyServerPort = 8000;
 const {ECSClient,RunTaskCommand} = require('@aws-sdk/client-ecs');
 const {createClient} = require('@clickhouse/client');
 const {Server, Socket} = require('socket.io');
@@ -11,16 +12,25 @@ const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
 app.use(express.json());
-const client = new createClient({
-    host:process.env.CLICK_HOUSE_URL,
-    database:process.env.CLICK_HOUSE_DB,
-    username:process.env.CLICK_HOUSE_USERNAME,
-    password:process.env.CLICK_HOUSE_PASSWORD,
-})
+// const client = createClient({
+//     host:process.env.CLICK_HOUSE_URL,
+//     database:process.env.CLICK_HOUSE_DB,
+//     username:process.env.CLICK_HOUSE_USERNAME,
+//     password:process.env.CLICK_HOUSE_PASSWORD,
+// })
+const initClickHouseClient  = async () => {
+    const client = await createClient({
+      host:process.env.CLICK_HOUSE_URL,
+      database:process.env.CLICK_HOUSE_DB,
+      username:process.env.CLICK_HOUSE_USERNAME,
+      password:process.env.CLICK_HOUSE_PASSWORD,
+    });
+    return client;
+};
+
 app.use(cors());
 
-const httpApp = http.createServer(app);
-const io = new Server(httpApp,{cors:'*',methods: ['GET', 'POST']});
+const io = new Server({ cors: "*" });
 const { z } = require('zod');
 const { PrismaClient } = require('@prisma/client');
 const { table } = require('console');
@@ -84,7 +94,7 @@ app.post('/deploy',async (req,res)=>{
             }
         });
         const deploymentId = deployment.id;
-        const projectSlug = generate();
+        const subDomain = project.subDomain;
         const command = new RunTaskCommand({
             cluster:config.CLUSTER,
             taskDefinition:config.TASK,
@@ -119,7 +129,7 @@ app.post('/deploy',async (req,res)=>{
                     {
                         name: process.env.ECR_CONTAINER_IMAGE_NAME,//'builder-image',image name
                         environment:[
-                            {name:'PROJECT_ID',value:projectId},
+                            {name:'SUB_DOMAIN',value:project.subDomain},
                             {name:'DEPLOYMENT_ID',value:deployment.id},
                             {name:'GIT_REPOSITORY_URL',value:project.gitUrl},
                             {name:'AWS_REGION',value:process.env.AWS_REGION},
@@ -139,7 +149,7 @@ app.post('/deploy',async (req,res)=>{
         const response = await ecsClient.send(command);
         console.log("Reached after ecsClient.send(command);");
         console.log(response);
-        return res.json({status:'queued',data:{projectId,url:`http://${projectSlug}.localhost:${port}`},deploymentId});
+        return res.json({status:'queued',data:{projectId,url:`http://${subDomain}.localhost:${proxyServerPort}`},deploymentId});
     }catch (error) {
         console.error("Error in deploy endpoint:", error);
         return res.status(500).json({ error: "Failed to run task" });
@@ -169,24 +179,60 @@ app.get('/logs/:id', async (req, res) => {
 
 async function initiateKafkaConsumer(){
     await consumer.connect();
-    await consumer.subscribe({topics:[process.env.KAFKA_TOPIC], fromBeginning: true });
+    await consumer.subscribe({topic:process.env.KAFKA_TOPIC});
     await consumer.run({
         autoCommit:false,
         eachBatch: async function({batch,heartbeat,commitOffsetsIfNecessary,resolveOffset}){
+            const client = await initClickHouseClient();
             const messages = batch.messages;
             console.log("Rec ",messages.length," messages");
-            console.log("messages.length",messages);
+            // console.log("messages.length",messages);
+        
             for (const message of messages){
                 const stringMessage= message.value.toString();
-                const {PROCESS_ID,DEPLOYMENT_ID,logs} = JSON.parse(stringMessage);
-                console.log(logs);
-                const {query_id} = await client.insert({
-                    table:'log_events',
-                    values: [{event_id: uuidv4(), deployment_id: DEPLOYMENT_ID,logs}]
+                const {SUB_DOMAIN,DEPLOYMENT_ID,log} = JSON.parse(stringMessage);
+                if (log === "Build Started...") {
+                    
+                    const updateDeployment = await prisma.deployment.update({
+                        where:{id:DEPLOYMENT_ID},
+                        data:{
+                            status:"IN_PROGRESS",
+                            updatedAt:(new Date()),
+                        }
+                    });
+                }
+                console.log(log);
+                console.log("SUB_DOMAIN",SUB_DOMAIN);
+                console.log("DEPLOYMENT_ID",DEPLOYMENT_ID);
+                // console.log(JSON.parse(stringMessage));
+                const query_id = await client.insert({
+                    table:  process.env.CLICK_HOUSE_LOG_TABLE_NAME,
+                    values: [{event_id: uuidv4(), deployment_id: DEPLOYMENT_ID??0,log:log??"ahmad"}],
+                    format: 'JSONEachRow',
+
                 });
                 const channel = 'logs:'+DEPLOYMENT_ID;
-                io.to(channel).emit('message', stringMessage);
-                resolveOffset(message.offset)
+                // console.log("channel"+channel);
+                io.to(channel).emit('message', log);
+                if (log === "Done...") {
+                    const updateDeployment = await prisma.deployment.update({
+                        where:{id:DEPLOYMENT_ID},
+                        data:{
+                            status:"SUCCESS",
+                            updatedAt:(new Date()),
+                        }
+                    });
+                }
+                if (log.startsWith("Error")) {
+                    const updateDeployment = await prisma.deployment.update({
+                        where:{id:DEPLOYMENT_ID},
+                        data:{
+                            status:"FAIL",
+                            updatedAt:(new Date()),
+                        }
+                    });
+                }
+                resolveOffset(message.offset);
                 await commitOffsetsIfNecessary(message.offset)
                 await heartbeat()
             }
@@ -203,11 +249,11 @@ function generate(){
     return ans;
 }
 
-httpApp.listen(port,()=>{
+app.listen(port,()=>{
     console.log("API server serving on port: ",port);
 })
-io.listen('9001',()=>{
-    console.log("Socket io server running on port: 9001");
+io.listen(socketPort,()=>{
+    console.log("Socket io server running on port: ",socketPort);
 }).on('error', (err) => {
     console.error("Error starting Socket.IO server:", err);
 });

@@ -17,7 +17,7 @@ AWS.config.update({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
 });
-const PROJECT_ID = process.env.PROJECT_ID;
+const SUB_DOMAIN = process.env.SUB_DOMAIN;
 const DEPLOYMENT_ID = process.env.DEPLOYMENT_ID;
 const kafka = new Kafka({
     clientId:`docker-build-server-${DEPLOYMENT_ID}`,
@@ -39,17 +39,26 @@ async function init(){
     const outDirPath = path.join(__dirname,'output');
     console.log("outDirPath",outDirPath);
     const p = exec(`cd ${outDirPath} && npm install && npm run build`);
-    p.stdout.on('data',function(data){
+    p.stdout.on('data',async function(data){
         console.log(data.toString());
         console.log(p.stdout.on);
+        await publisLog(data.toString());
     });
-    p.stdout.on('Error',async function(data){
+    p.stderr.on('Error',async function(data){
         console.log("Error:",data.toString());
         await publisLog(`Error: ${data.toString()}`);
     });
     p.on('close',async function(){
         console.log("build completed");
-        const distFolderPath = path.join(__dirname,'output','dist');
+        await publisLog(`build completed`);
+        let distFolderPath = path.join(__dirname, 'output', 'dist');
+        if (!fs.existsSync(distFolderPath)) {
+            distFolderPath = path.join(__dirname, 'output', 'build');
+            if (!fs.existsSync(distFolderPath)) {
+                await publisLog('Error: Build is not in dist or build folder');
+                process.exit(0);
+            }
+        }
         console.log("distFolderPath",distFolderPath);
         const distFolderContent = fs.readdirSync(distFolderPath,{recursive:true});
         await publisLog('Starting to upload...');
@@ -60,7 +69,7 @@ async function init(){
             await publisLog(`uploading ${file}`);
             const command = new PutObjectCommand({
               Bucket: 'smavercel',
-              Key: `__outputs/${PROJECT_ID}/${file}`,
+              Key: `__outputs/${SUB_DOMAIN}/${file}`,
               Body: fs.createReadStream(filePath),
               ContentType: mime.lookup(filePath)
             })
@@ -74,7 +83,7 @@ async function init(){
     });
 }
 async function publisLog(log){
-  await producer.send({topic:`container-logs`,messages:[{key:'log',value:JSON.stringify({PROJECT_ID,DEPLOYMENT_ID,log})}]})
+  await producer.send({topic:`container-logs`,messages:[{key:'log',value:JSON.stringify({SUB_DOMAIN,DEPLOYMENT_ID,log})}]})
 }
 init(); 
   
