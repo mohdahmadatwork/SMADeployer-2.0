@@ -29,7 +29,7 @@ const kafka = new Kafka({
     clientId:`api-server`,
     brokers:[process.env.KAFKA_BROKER_URL],
     ssl:{
-        ca:[fs.readFileSync(path.join(__dirname,'kafka.pem'),'utf-8')]
+        ca:[process.env.KAFKA_CA_FILE_CONTENT]
     },
     sasl:{
         username:process.env.KAFKA_BROKER_USERNAME,
@@ -46,8 +46,8 @@ const ecsClient = new ECSClient({
     }
 })
 const config = {
-    CLUSTER: 'arn:aws:ecs:us-east-1:992382823091:cluster/build-server-cluster',
-    TASK:'arn:aws:ecs:us-east-1:992382823091:task-definition/builder-task:8'
+    CLUSTER: process.env.ECS_CONTAINER_ARN,//'arn:aws:ecs:us-east-1:992382823091:cluster/build-server-cluster',
+    TASK: process.env.ECS_CONTAINER_TASK_ARN,//'arn:aws:ecs:us-east-1:992382823091:task-definition/builder-task:8'
 }
 app.post('/project',async(req,res)=>{
     const schema = z.object({
@@ -78,67 +78,68 @@ app.post('/deploy',async (req,res)=>{
         console.log("project",project.gitUrl);
         if(!project) return res.status(404).json({error:"Project not found"});
         const deployment = await prisma.deployment.create({
-        data:{
-            project:{connect:{id:projectId}},
-            status:'QUEUED'
-        }
-    });
-    const projectSlug = generate();
-    const command = new RunTaskCommand({
-        cluster:config.CLUSTER,
-        taskDefinition:config.TASK,
-        count:1,
-        launchType:'FARGATE',
-        networkConfiguration:{
-            awsvpcConfiguration:{
-                assignPublicIp: 'ENABLED',
-                subnets:['subnet-0f997db07c300fa94','subnet-0b73ad06a9c4db872','subnet-07c6a9e2f04442ab5','subnet-0a7248c3297111426','subnet-020708114906883ca','subnet-03e1de896e5384984'], // can get from the network tab inside the task when we run manually 
-                securityGroups:['sg-0cd950531b9a8f2a8'], // can get from the same place
+            data:{
+                project:{connect:{id:projectId}},
+                status:'QUEUED'
             }
-        },
-        "containerDefinitions": [
-            {
-                "name": "builder-server",
-                "image": "992382823091.dkr.ecr.us-east-1.amazonaws.com/builder-server:latest",
-                "essential": true,
-                "portMappings": [
+        });
+        const deploymentId = deployment.id;
+        const projectSlug = generate();
+        const command = new RunTaskCommand({
+            cluster:config.CLUSTER,
+            taskDefinition:config.TASK,
+            count:1,
+            launchType:'FARGATE',
+            networkConfiguration:{
+                awsvpcConfiguration:{
+                    assignPublicIp: 'ENABLED',
+                    subnets:[process.env.ECS_SUBNET_1,process.env.ECS_SUBNET_2,process.env.ECS_SUBNET_3], // can get from the network tab inside the task when we run manually 
+                    securityGroups:[process.env.ECS_SECURITYGROUP_1], // can get from the same place
+                }
+            },
+            "containerDefinitions": [
+                {
+                    "name": process.env.ECR_CONTAINER_NAME,//'builder-server'
+                    "image": process.env.ECR_CONTAINER_IMAGE_URI,
+                    "essential": true,
+                    "portMappings": [
+                        {
+                            "containerPort": 80,
+                            "hostPort": 80
+                        },
+                        {
+                            "containerPort": 9092,
+                            "hostPort": 9092
+                        }
+                    ]
+                }
+            ],
+            overrides:{
+                containerOverrides:[
                     {
-                        "containerPort": 80,
-                        "hostPort": 80
-                    },
-                    {
-                        "containerPort": 9092,
-                        "hostPort": 9092
+                        name: process.env.ECR_CONTAINER_IMAGE_NAME,//'builder-image',image name
+                        environment:[
+                            {name:'PROJECT_ID',value:projectId},
+                            {name:'DEPLOYMENT_ID',value:deployment.id},
+                            {name:'GIT_REPOSITORY_URL',value:project.gitUrl},
+                            {name:'AWS_REGION',value:process.env.AWS_REGION},
+                            {name:'AWS_ACCESS_KEY_ID',value:process.env.AWS_ACCESS_KEY_ID},
+                            {name:'AWS_SECRET_ACCESS_KEY',value:process.env.AWS_SECRET_ACCESS_KEY},
+                            {name:'KAFKA_BROKER_USERNAME',value:process.env.KAFKA_BROKER_USERNAME},
+                            {name:'KAFKA_BROKER_PASSWORD',value:process.env.KAFKA_BROKER_PASSWORD},
+                            {name:'KAFKA_BROKER_MECHANISM',value:process.env.KAFKA_BROKER_MECHANISM},
+                            {name:'KAFKA_BROKER_URL',value:process.env.KAFKA_BROKER_URL},
+                            {name:'KAFKA_CA_FILE_CONTENT',value:process.env.KAFKA_CA_FILE_CONTENT},
+                        ]
                     }
                 ]
             }
-        ],
-        overrides:{
-            containerOverrides:[
-                {
-                    name:'builder-image',//image name
-                    environment:[
-                        {name:'PROJECT_ID',value:projectId},
-                        {name:'DEPLOYMENT_ID',value:deployment.id},
-                        {name:'GIT_REPOSITORY_URL',value:project.gitUrl},
-                        {name:'AWS_REGION',value:process.env.AWS_REGION},
-                        {name:'AWS_ACCESS_KEY_ID',value:process.env.AWS_ACCESS_KEY_ID},
-                        {name:'AWS_SECRET_ACCESS_KEY',value:process.env.AWS_SECRET_ACCESS_KEY},
-                        {name:'KAFKA_BROKER_USERNAME',value:process.env.KAFKA_BROKER_USERNAME},
-                        {name:'KAFKA_BROKER_PASSWORD',value:process.env.KAFKA_BROKER_PASSWORD},
-                        {name:'KAFKA_BROKER_MECHANISM',value:process.env.KAFKA_BROKER_MECHANISM},
-                        {name:'KAFKA_BROKER_URL',value:process.env.KAFKA_BROKER_URL},
-                        {name:'REDIS_SERVER',value:process.env.REDIS_SERVER_URL},
-                    ]
-                }
-            ]
-        }
-    })
-    console.log("Reached just before ecsClient.send(command);");
-    const response = await ecsClient.send(command);
-    console.log("Reached after ecsClient.send(command);");
-    console.log(response);
-    return res.json({status:'queued',data:{projectId,url:`http://${projectSlug}.localhost:${port}`}});
+        })
+        console.log("Reached just before ecsClient.send(command);");
+        const response = await ecsClient.send(command);
+        console.log("Reached after ecsClient.send(command);");
+        console.log(response);
+        return res.json({status:'queued',data:{projectId,url:`http://${projectSlug}.localhost:${port}`},deploymentId});
     }catch (error) {
         console.error("Error in deploy endpoint:", error);
         return res.status(500).json({ error: "Failed to run task" });
@@ -151,14 +152,30 @@ io.on('connection',socket=>{
     })
 })
 
+app.get('/logs/:id', async (req, res) => {
+    const id = req.params.id;
+    const logs = await client.query({
+        query: `SELECT event_id, deployment_id, log, timestamp from log_events where deployment_id = {deployment_id:String}`,
+        query_params: {
+            deployment_id: id
+        },
+        format: 'JSONEachRow'
+    })
+
+    const rawLogs = await logs.json()
+
+    return res.json({ logs: rawLogs })
+})
+
 async function initiateKafkaConsumer(){
     await consumer.connect();
-    await consumer.subscribe({topic:'container-logs'});
+    await consumer.subscribe({topics:[process.env.KAFKA_TOPIC], fromBeginning: true });
     await consumer.run({
         autoCommit:false,
         eachBatch: async function({batch,heartbeat,commitOffsetsIfNecessary,resolveOffset}){
             const messages = batch.messages;
             console.log("Rec ",messages.length," messages");
+            console.log("messages.length",messages);
             for (const message of messages){
                 const stringMessage= message.value.toString();
                 const {PROCESS_ID,DEPLOYMENT_ID,logs} = JSON.parse(stringMessage);
@@ -167,6 +184,8 @@ async function initiateKafkaConsumer(){
                     table:'log_events',
                     values: [{event_id: uuidv4(), deployment_id: DEPLOYMENT_ID,logs}]
                 });
+                const channel = 'logs:'+DEPLOYMENT_ID;
+                io.to(channel).emit('message', stringMessage);
                 resolveOffset(message.offset)
                 await commitOffsetsIfNecessary(message.offset)
                 await heartbeat()

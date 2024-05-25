@@ -11,7 +11,6 @@ RUN apt-get install git -y
 WORKDIR /home/app
 COPY main.sh main.sh
 COPY script.js script.js
-COPY kafka.pem kafka.pem
 COPY package*.json .
 RUN npm install
 

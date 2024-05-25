@@ -51,10 +51,10 @@ export default function Home() {
     }
     data = resData2.data;
     if (data && data.data) {
-      const {projectId , url} = data;
+      const {projectId , url,deploymentId} = data;
       setDeployPreviewURL(url);
-      console.log(`Subscribing to logs:${projectId}`);
-      socket.emit("subscribe", `logs:${projectId}`);
+      console.log(`Subscribing to logs:${deploymentId}`);
+      socket.emit("subscribe", `logs:${deploymentId}`);
     }
   }, [projectId, repoURL]);
 

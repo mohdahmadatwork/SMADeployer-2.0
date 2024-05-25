@@ -23,7 +23,7 @@ const kafka = new Kafka({
     clientId:`docker-build-server-${DEPLOYMENT_ID}`,
     brokers:[process.env.KAFKA_BROKER_URL],
     ssl:{
-        ca:[fs.readFileSync(path.join(__dirname,'kafka.pem'),'utf-8')]
+        ca:[process.env.KAFKA_CA_FILE_CONTENT]
     },
     sasl:{
         username:process.env.KAFKA_BROKER_USERNAME,
