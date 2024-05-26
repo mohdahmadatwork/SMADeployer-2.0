@@ -33,7 +33,7 @@ app.use(cors());
 const io = new Server({ cors: "*" });
 const { z } = require('zod');
 // const { PrismaClient } = require('@prisma/client');
-const prisma = require("@repo/db")
+const prisma = require("@repo/db");
 const { table } = require('console');
 // const prisma = new PrismaClient({});
 const kafka = new Kafka({
