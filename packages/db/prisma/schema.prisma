@@ -43,3 +43,11 @@ model Deployment{
 }
 
 
+model User{
+  id Int @id @default(autoincrement())
+  firstName String @map("first_name")
+  lastName String @map("last_name")
+  username String @unique
+  email String @unique
+  password String 
+}

@@ -18,7 +18,8 @@
     "kafkajs": "^2.2.4",
     "socket.io": "^4.7.4",
     "uuid": "^9.0.1",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "@repo/db":"*"
   },
   "devDependencies": {
     "@types/node": "^20.11.26",
