@@ -7,13 +7,16 @@
     "lint": "turbo lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
+  "dependencies": {
+    "@repo/db": "*"
+  },
   "devDependencies": {
+    "@repo/db": "*",
     "@repo/eslint-config": "*",
     "@repo/typescript-config": "*",
-    "@repo/db":"*",
+    "dotenv-cli": "^7.4.2",
     "prettier": "^3.2.5",
-    "turbo": "latest",
-    "dotenv-cli": "latest"
+    "turbo": "latest"
   },
   "engines": {
     "node": ">=18"

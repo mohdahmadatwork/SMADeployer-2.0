@@ -2,14 +2,16 @@
   "name": "@repo/db",
   "version": "0.0.0",
   "dependencies": {
-    "@prisma/client": "^5.11.0"
+    "@prisma/client": "^5.11.0",
+    "@types/dotenv": "^8.2.0",
+    "dotenv": "^16.4.5",
+    "dotenv-cli": "latest"
   },
   "devDependencies": {
     "@types/node": "^20.12.2",
     "prisma": "5.11.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.3",
-    "@repo/db" : "*"
+    "typescript": "^5.4.3"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

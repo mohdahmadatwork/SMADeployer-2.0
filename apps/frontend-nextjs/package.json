@@ -27,9 +27,12 @@
     "react-dom": "^18",
     "socket.io-client": "^4.7.4",
     "tailwind-merge": "^2.2.1",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "^3.23.8",
+    "fs": "^0.0.1-security"
   },
   "devDependencies": {
+    "@repo/db": "*",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
