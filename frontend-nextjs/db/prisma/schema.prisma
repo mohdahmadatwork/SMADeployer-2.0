@@ -24,7 +24,6 @@ enum DeploymentStatus{
 
 model Project{
   id String @id @default(uuid())
-  userId Int
   name String
   gitUrl String @map("git_url")
   subDomain String @map("subdomain")
@@ -32,7 +31,6 @@ model Project{
   Deployment Deployment[]
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
-  user User @relation(fields: [userId],references: [id]) 
 }
 
 model Deployment{
@@ -44,6 +42,7 @@ model Deployment{
   updatedAt DateTime @updatedAt @map("updated_at")
 }
 
+
 model User{
   id Int @id @default(autoincrement())
   firstName String @map("first_name")
@@ -52,5 +51,4 @@ model User{
   password String 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
-  projects Project[]
 }
