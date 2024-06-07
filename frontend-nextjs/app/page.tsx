@@ -18,11 +18,18 @@ const socket = io("http://localhost:9001");
 const firaCode = Fira_Code({ subsets: ["latin"] });
 export default function Page() {
   const {data:session,status} = useSession();
+  const msession = useSession();
   const router = useRouter();
-  console.log("session",session);
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/signup");
+    }
+  }, [status, router]);
+  console.log("session frontend",session);
   setTimeout(() => {
     
     console.log("session inside",session);
+    console.log("session inside mmmm ", msession);
   }, 10000);
   // if (session) {
     // const session = await getServerSession(authOptions);
@@ -80,7 +87,7 @@ export default function Page() {
         setDeployPreviewURL(url);
         console.log("url",url);
         console.log(`Subscribing to logs:${deploymentId}`);
-        socket.emit("subscribe", {token:"",channel:`logs:${deploymentId}`});
+        socket.emit("subscribe", {token:token,channel:`logs:${deploymentId}`});
       }
     }, [projectId, repoURL]);
   

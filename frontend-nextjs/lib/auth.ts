@@ -4,7 +4,7 @@ import {compare, hash} from "bcrypt";
 import GitHubProvider from "next-auth/providers/github";
 import GoogleProvider from "next-auth/providers/google";
 import LinkedInProvider from "next-auth/providers/linkedin";
-
+import jwt from "jsonwebtoken";
 export const authOptions = {
     providers:[
         CredentialsProvider({
@@ -27,10 +27,9 @@ export const authOptions = {
                     if (!isUserValidated) {
                         return null;
                     }else{
-                        // const authToken = await jwt.sign({email},process.env.JWT_SECRET,{expiresIn:'1h'});
                         const userInfo = {
                             id:(user.id).toString(),
-                            email:email,
+                            email:email
                         };
                         return userInfo;
                     }
@@ -54,9 +53,24 @@ export const authOptions = {
     ],
     secret: process.env.JWT_SECRET || "secret",
     callbacks:{
-        async session({token, session}: any){
+        async jwt({token,user}:any){
+            const id = token.sub;
+            const email = token.email;
+            console.log("user");
+            console.log(user);
+            console.log("token jwt");
+            console.log(token);
+            const authToken = await jwt.sign({email,id},process.env.JWT_SECRET || "secret",{expiresIn:'1h'});
+            token.authToken = authToken;
+            return token;
+        },
+        async session({token, session, user}: any){
+            console.log("Mohd Ahmad")
+            console.log(token);
+            console.log(session);
+            console.log(user);
             session.user.id = token.sub;
-            session.user.token = token;
+            session.user.token = token.authToken;
             return session;
         }
     }

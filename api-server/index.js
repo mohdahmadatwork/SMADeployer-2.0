@@ -11,6 +11,7 @@ const { v4: uuidv4} = require('uuid');
 const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
+const jwt = require("jsonwebtoken");
 app.use(express.json());
 // const client = createClient({
 //     host:process.env.CLICK_HOUSE_URL,
@@ -29,7 +30,45 @@ const initClickHouseClient  = async () => {
 };
 
 app.use(cors());
+const authenticateToken = (req, res, next) => {
+    // Get the token from the request headers
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    console.log("authHeader");
+    console.log(authHeader);
+    console.log("token");
+    console.log(token);
+    if (!token) {
+        return res.status(401).json({ message: 'Unauthorized' });
+    }
 
+    // Verify the token
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+        if (err) {
+        return res.status(403).json({ message: 'Forbidden' });
+        }
+        req.user = decoded;
+        next(); 
+    });
+};
+const verifyTokenInSocket = (socket, token, next) => {
+    if (!token) {
+        socket.emit('error', 'Unauthorized');
+        socket.disconnect(); 
+        return;
+    }
+
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+        if (err) {
+            socket.emit('error', 'Unauthorized');
+            socket.disconnect(); 
+            return;
+        }
+
+        socket.user = decoded; // Attach user data to socket object
+        next(); // Call the next handler
+    });
+};
 const io = new Server({ cors: "*" });
 const { z } = require('zod');
 const { PrismaClient } = require('@prisma/client');
@@ -59,7 +98,9 @@ const config = {
     CLUSTER: process.env.ECS_CONTAINER_ARN,//'arn:aws:ecs:us-east-1:992382823091:cluster/build-server-cluster',
     TASK: process.env.ECS_CONTAINER_TASK_ARN,//'arn:aws:ecs:us-east-1:992382823091:task-definition/builder-task:8'
 }
-app.post('/project',async(req,res)=>{
+app.post('/project',authenticateToken,async(req,res)=>{
+    console.log("user");
+    console.log(req.user);
     const schema = z.object({
         name:z.string(),
         gitUrl:z.string()
@@ -70,16 +111,22 @@ app.post('/project',async(req,res)=>{
         return res.status(400).json({error:safeParseResult.error});
     }
     const {name,gitUrl} = safeParseResult.data;
-    const project = await prisma.project.create({
+    
+    project = await prisma.project.create({
         data:{
             name,
             gitUrl,
-            subDomain:generate()
+            subDomain:generate(),
+            user:{
+                connect: {
+                    id: parseInt(req.user.id) // Make sure this is a valid user ID
+                }
+            }
         }
     });
     return res.json({status:"success",data:{project}});
 })
-app.post('/deploy',async (req,res)=>{
+app.post('/deploy',authenticateToken,async (req,res)=>{
     const {projectId} = req.body;
     console.log("projectId ",projectId);
     try{
@@ -156,9 +203,13 @@ app.post('/deploy',async (req,res)=>{
     }
 });
 io.on('connection',socket=>{
-    socket.on('subscribe',channel=>{
-        socket.join(channel);
-        socket.emit("message",`Joined ${channel}`)
+    socket.on('subscribe',data=>{
+        const { token, channel } = data;
+        verifyTokenInSocket(socket, token, () => {
+            socket.join(channel);
+            socket.emit('message', `Joined ${channel}`);
+            console.log(`User ${socket.user.id} joined channel ${channel}`);
+        });
     })
 })
 
